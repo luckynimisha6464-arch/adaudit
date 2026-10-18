@@ -2,6 +2,7 @@
   "name": "adaudit",
   "version": "1.0.0",
   "dependencies": {
-    "googleapis": "^140.0.0"
+    "googleapis": "^140.0.0",
+    "node-fetch": "^2.7.0"
   }
 }
