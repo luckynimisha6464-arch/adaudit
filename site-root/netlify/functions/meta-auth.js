@@ -1,5 +1,3 @@
-const fetch = require('node-fetch');
-
 export async function handler(event, context) {
     const clientId = process.env.FACEBOOK_CLIENT_ID;
     const clientSecret = process.env.FACEBOOK_CLIENT_SECRET;
