@@ -2,14 +2,9 @@ const { google } = require('googleapis');
 
 exports.handler = async function(event, context) {
   try {
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.REDIRECT_URI
-    );
-
-    // യൂസർ സെഷനിൽ നിന്നുള്ള ടോക്കൺ എടുക്കുക
     const accessToken = event.headers.authorization || event.queryStringParameters?.token;
+    const developerToken = process.env.GOOGLE_DEVELOPER_TOKEN;
+    const customerId = process.env.GOOGLE_CUSTOMER_ID; // നിങ്ങളുടെ Google Ads Customer ID (hyphens ഇല്ലാതെ)
 
     if (!accessToken) {
       return {
@@ -18,20 +13,61 @@ exports.handler = async function(event, context) {
       };
     }
 
-    oauth2Client.setCredentials({ access_token: accessToken });
+    if (!developerToken || !customerId) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Google Developer Token or Customer ID not configured in Netlify environment variables.' })
+      };
+    }
 
-    // ഗൂഗിൾ ആഡ്സ് അക്കൗണ്ട് ഡാറ്റ ഫെച്ച് ചെയ്യുന്ന ഭാഗം
+    // Google Ads API v14/v15 REST endpoint വഴി ലൈവ് ഡാറ്റ ഫെച്ച് ചെയ്യുക
+    const https = require('https');
+    
+    const query = "SELECT campaign.id, campaign.name, campaign.status, metrics.clicks, metrics.cost_micros FROM campaign WHERE campaign.status = 'ENABLED'";
+    
+    const postData = JSON.stringify({ query: query });
+
+    const options = {
+      hostname: 'googleads.googleapis.com',
+      path: `/v15/customers/${customerId}/googleAds:searchStream`,
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'developer-token': developerToken,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    // API Call നിർവ്വഹിക്കുന്നു
+    const apiResult = await new Promise((resolve, reject) => {
+      let data = '';
+      const req = https.request(options, (res) => {
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            reject(new Error('Failed to parse Google Ads API response: ' + data));
+          }
+        });
+      });
+
+      req.on('error', (e) => { reject(e); });
+      req.write(postData);
+      req.end();
+    });
+
     return {
       statusCode: 200,
       body: JSON.stringify({ 
         success: true, 
         platform: 'Google Ads',
-        message: 'Google Ads campaigns fetched successfully',
-        campaigns: [
-          { name: 'Google_Search_Campaign_Q4', status: 'Active', clicks: 1240, cost: '$320' }
-        ] 
+        message: 'Live Google Ads campaigns fetched successfully',
+        raw_data: apiResult 
       })
     };
+
   } catch (error) {
     return {
       statusCode: 500,
